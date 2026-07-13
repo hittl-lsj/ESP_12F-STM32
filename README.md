@@ -1,90 +1,98 @@
 # ESP-12F STM32 TCP Bridge
 
-基于 STM32F103 和 ESP-12F（ESP8266 AT 固件）的 UART-to-TCP 通信项目。
+STM32F103 uses USART2 to control an ESP-12F (ESP8266 AT firmware), and USART1 as a PC serial bridge. After boot, the firmware joins Wi-Fi, connects to the configured TCP server, and accepts GPIO commands.
 
-STM32 通过 USART2 控制 ESP-12F，通过 USART1 与电脑串口工具通信。项目支持双向串口
-透明透传、上电自动连接 Wi-Fi 和 TCP 服务器、断线重连，以及服务器远程控制 GPIO。
+## Features
 
-## 功能
+- USART1 <-> USART2 transparent serial bridge
+- ESP8266 AT command response parsing
+- Automatic Wi-Fi/TCP connection and retry
+- TCP control of PB8 LED and PA8 buzzer
+- CubeMX project, GNU Arm Makefile, and HAL drivers
 
-- USART1 与 USART2 双向不定长数据透传
-- 环形缓冲区和 UART 接收中断
-- ESP-12F AT 响应解析
-- 上电自动连接 Wi-Fi
-- 自动连接 TCP 服务器并在断线后重试
-- 服务器发送 `LED ON` / `LED OFF` 控制 PB8
-- STM32CubeMX `.ioc`、GCC Makefile 和 HAL 驱动
-- 模块化应用层与中文模块文档
+## Hardware
 
-## 数据链路
+| STM32 pin | Connection |
+|---|---|
+| PA2 | ESP-12F RX (USART2_TX) |
+| PA3 | ESP-12F TX (USART2_RX) |
+| PA9 | USB-TTL RX (USART1_TX) |
+| PA10 | USB-TTL TX (USART1_RX) |
+| PB8 | LED or other active-high output |
+| PA8 | Buzzer control input, active high |
+| GND | Common ground |
 
-```text
-Serial Tool <-> USART1 <-> STM32F103 <-> USART2 <-> ESP-12F
-                                                     |
-                                                     Wi-Fi
-                                                     |
-                                                  TCP Server
-```
+PA8 and PB8 are push-pull outputs and start low. Drive a buzzer through a suitable transistor or driver if its current exceeds the STM32 GPIO rating; do not connect a power buzzer directly to the pin.
 
-## 硬件连接
-
-```text
-STM32 PA2  (USART2_TX) -> ESP-12F RX
-STM32 PA3  (USART2_RX) <- ESP-12F TX
-STM32 PA9  (USART1_TX) -> USB-TTL RX
-STM32 PA10 (USART1_RX) <- USB-TTL TX
-STM32 PB8               -> LED / controlled output
-GND                     -> common ground
-```
-
-ESP-12F 使用稳定的 3.3 V 电源，建议供电能力不低于 500 mA。所有 UART 均为
-115200、8N1、无流控。
-
-## 配置
-
-首次克隆后创建本地配置：
+## Configuration
 
 ```powershell
 Copy-Item App/Inc/app_secrets.example.h App/Inc/app_secrets.h
 ```
 
-编辑 `App/Inc/app_secrets.h` 填写 Wi-Fi、服务器 IP 和端口。该文件已被 `.gitignore`
-排除，不会提交本地 Wi-Fi 密码。
+Set Wi-Fi credentials and the TCP server address in `App/Inc/app_secrets.h`. This file is ignored by Git.
 
-## 构建
+GPIO mappings are kept in `App/Inc/app_config.h`:
 
-安装 GNU Arm Embedded Toolchain 和 Make，然后运行：
+```c
+#define APP_LED_GPIO_PORT    GPIOB
+#define APP_LED_GPIO_PIN     GPIO_PIN_8
+#define APP_BUZZER_GPIO_PORT GPIOA
+#define APP_BUZZER_GPIO_PIN  GPIO_PIN_8
+```
+
+## TCP commands
+
+Send the following plain ASCII commands over the TCP connection. The ESP AT `+IPD` length prefix is handled by the firmware.
+
+| Command | Action |
+|---|---|
+| `LED ON` | Set PB8 high |
+| `LED OFF` | Set PB8 low |
+| `BUZZER ON` | Set PA8 high |
+| `BUZZER OFF` | Set PA8 low |
+
+Example PowerShell TCP client:
+
+```powershell
+$client = [Net.Sockets.TcpClient]::new("STM32_IP", 8080)
+$stream = $client.GetStream()
+$data = [Text.Encoding]::ASCII.GetBytes("BUZZER ON")
+$stream.Write($data, 0, $data.Length)
+$client.Close()
+```
+
+## PC serial commands
+
+The PC connected to USART1 can send any bytes; the bridge forwards them unchanged to USART2/ESP-12F. For manual setup or diagnostics, these are the AT commands issued automatically by the firmware (each line ends with CRLF):
+
+| Order | Command | Purpose |
+|---:|---|---|
+| 1 | `AT` | Check that the ESP responds |
+| 2 | `AT+CWMODE=1` | Select station mode |
+| 3 | `AT+CWJAP="SSID","PASSWORD"` | Join the configured Wi-Fi network |
+| 4 | `AT+CIPMUX=0` | Select single TCP connection mode |
+| 5 | `AT+CIPSTART="TCP","SERVER_IP",PORT` | Connect to the configured TCP server |
+
+After the TCP connection is established, the PC can send the same payload commands listed above (`LED ON`, `LED OFF`, `BUZZER ON`, and `BUZZER OFF`) through the TCP server. USART1 also displays ESP responses, including `OK`, `ERROR`, `WIFI CONNECTED`, `WIFI GOT IP`, `CONNECT`, and `CLOSED`.
+
+For direct ESP testing, send `AT+CIPSEND` only when manually using the ESP AT protocol; the STM32 automatic state machine already manages connection setup and forwards TCP payloads.
+
+## Build
+
+Install the GNU Arm Embedded toolchain and GNU Make, then run:
 
 ```powershell
 make -j4
 ```
 
-固件输出到 `build/ESP_12f.elf`、`build/ESP_12f.hex` 和 `build/ESP_12f.bin`。
+Outputs are written to `build/ESP_12f.elf`, `build/ESP_12f.hex`, and `build/ESP_12f.bin`.
 
-## 模块文档
+## Documentation
 
-- [应用层总览](App/README.md)
-- [配置模块](App/README_app_config.md)
-- [串口桥接模块](App/README_uart_bridge.md)
-- [ESP-12F 模块](App/README_esp12f.md)
+- [Application overview](App/README.md)
+- [Application configuration](App/README_app_config.md)
+- [UART bridge](App/README_uart_bridge.md)
+- [ESP-12F module](App/README_esp12f.md)
 
-## TCP 测试服务器
-
-```powershell
-$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8080)
-$listener.Start()
-$client = $listener.AcceptTcpClient()
-$stream = $client.GetStream()
-```
-
-发送 GPIO 命令：
-
-```powershell
-$data = [Text.Encoding]::ASCII.GetBytes("LED ON")
-$stream.Write($data, 0, $data.Length)
-```
-
-## 当前限制
-
-`+IPD` 当前使用固定短字符串匹配，适合学习和短命令验证。二进制数据、长包和正式产品
-应改为按长度解析的协议状态机。
+The current `+IPD` parser is intended for short text commands. A production protocol should use length-driven packet parsing.
