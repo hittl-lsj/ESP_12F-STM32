@@ -1,0 +1,9 @@
+#ifndef APP_SECRETS_H
+#define APP_SECRETS_H
+
+#define APP_WIFI_SSID       "YOUR_WIFI_SSID"
+#define APP_WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
+#define APP_SERVER_IP       "192.168.1.100"
+#define APP_SERVER_PORT     "8080"
+
+#endif

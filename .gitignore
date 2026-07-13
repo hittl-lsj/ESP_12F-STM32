@@ -1,0 +1,39 @@
+# Local network credentials
+App/Inc/app_secrets.h
+
+# Build output
+build/
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.o
+*.d
+
+# Unused CMSIS packs generated alongside this small Cortex-M3 project
+Drivers/CMSIS/*
+!Drivers/CMSIS/Include/
+!Drivers/CMSIS/Device/
+!Drivers/CMSIS/LICENSE.txt
+Drivers/CMSIS/Device/*
+!Drivers/CMSIS/Device/ST/
+Drivers/CMSIS/Device/ST/*
+!Drivers/CMSIS/Device/ST/STM32F1xx/
+Drivers/CMSIS/Device/ST/STM32F1xx/*
+!Drivers/CMSIS/Device/ST/STM32F1xx/Include/
+!Drivers/CMSIS/Device/ST/STM32F1xx/LICENSE.txt
+
+# STM32CubeIDE / editors
+.settings/
+.metadata/
+Debug/
+Release/
+.vscode/
+.idea/
+*.launch
+*.user
+
+# OS files
+Thumbs.db
+.DS_Store
