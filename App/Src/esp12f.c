@@ -31,6 +31,11 @@ static volatile uint8_t response_closed;
 static ESP_AutoState auto_state = ESP_STATE_BOOT_DELAY;
 static uint32_t state_deadline;
 
+uint8_t ESP12F_IsConnected(void)
+{
+  return (auto_state == ESP_STATE_CONNECTED) ? 1U : 0U;
+}
+
 static uint8_t ESP12F_DeadlineExpired(void)
 {
   return ((int32_t)(HAL_GetTick() - state_deadline) >= 0) ? 1U : 0U;
@@ -78,13 +83,13 @@ void ESP12F_OnRxByte(uint8_t data)
 
   if (strstr(response_buffer, "+IPD,6:LED ON") != NULL)
   {
-    HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, 0);
     memset(response_buffer, 0, sizeof(response_buffer));
     response_index = 0U;
   }
   else if (strstr(response_buffer, "+IPD,7:LED OFF") != NULL)
   {
-    HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, 1);
     memset(response_buffer, 0, sizeof(response_buffer));
     response_index = 0U;
   }

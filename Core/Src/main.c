@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "adc.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -25,6 +26,9 @@
 /* USER CODE BEGIN Includes */
 #include "esp12f.h"
 #include "uart_bridge.h"
+#include "oled.h"
+#include "app_config.h"
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -93,8 +97,10 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   UART_Bridge_Init();// 初始化 UART 桥接
+  OLED_Init();
 
   /* USER CODE END 2 */
 
@@ -107,6 +113,24 @@ int main(void)
     /* USER CODE BEGIN 3 */
     UART_Bridge_Task();
     ESP12F_Task();
+    {
+      static uint32_t oled_update_tick;
+      if ((HAL_GetTick() - oled_update_tick) >= 250U)
+      {
+        char line[24];
+        oled_update_tick = HAL_GetTick();
+        OLED_Clear(OLED_COLOR_BLACK);
+        OLED_SetCursor(0U, 0U);
+        OLED_WriteString(ESP12F_IsConnected() ? "ESP: CONNECT" : "ESP: WAIT", OLED_COLOR_WHITE);
+        OLED_SetCursor(0U, 8U);
+        snprintf(line, sizeof(line), "LED: %s", HAL_GPIO_ReadPin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN) == GPIO_PIN_RESET ? "ON" : "OFF");
+        OLED_WriteString(line, OLED_COLOR_WHITE);
+        OLED_SetCursor(0U, 16U);
+        snprintf(line, sizeof(line), "BEEP: %s", HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET ? "ON" : "OFF");
+        OLED_WriteString(line, OLED_COLOR_WHITE);
+        OLED_UpdateScreen();
+      }
+    }
   }
   /* USER CODE END 3 */
 }
@@ -119,6 +143,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -145,6 +170,12 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
