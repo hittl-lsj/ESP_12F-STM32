@@ -1,6 +1,6 @@
 # ESP-12F STM32 TCP 通信桥
 
-本项目基于 STM32F103 和 ESP-12F（ESP8266 AT 固件）。STM32 通过 USART2 控制 ESP-12F，通过 USART1 与电脑串口工具通信。设备上电后会自动连接 Wi-Fi 和 TCP 服务器，并接收服务器发送的 GPIO 控制指令。
+本项目基于 STM32F103 和 ESP-12F（ESP8266 AT 固件）。STM32 通过 USART2 控制 ESP-12F，通过 USART1 与电脑串口工具通信。设备上电后会自动连接 Wi-Fi 和 TCP 服务器，接收服务器发送的 GPIO 控制指令，并上传 LED、蜂鸣器和噪音状态。
 
 ## 主要功能
 
@@ -10,6 +10,10 @@
 - 连接失败或断开后自动重试
 - 通过 TCP 控制 PB8 LED
 - 通过 TCP 控制 PA8 蜂鸣器
+- 通过 PA0 ADC 采集噪音模块模拟输出
+- OLED 显示网络、LED、蜂鸣器和相对噪音大小
+- 每秒向 TCP 服务器上传一次设备状态
+- 提供可交互的 PowerShell TCP 服务器脚本
 - 提供 STM32CubeMX 工程、GNU Arm Makefile 和 HAL 驱动
 
 ## 数据链路
@@ -30,11 +34,14 @@
 | PA3 | ESP-12F TX（USART2_RX） |
 | PA9 | USB-TTL RX（USART1_TX） |
 | PA10 | USB-TTL TX（USART1_RX） |
-| PB8 | LED 或其他高电平有效输出 |
+| PA0 | 噪音模块模拟输出 AO（ADC1_IN0） |
+| PB8 | LED，当前固件按低电平点亮 |
 | PA8 | 蜂鸣器控制端，高电平有效 |
 | GND | 所有设备共地 |
 
-PA8 和 PB8 均配置为推挽输出，上电默认输出低电平。
+PA0 必须连接噪音模块的模拟输出 `AO`，不要连接数字比较器输出 `DO`。噪音模块和 STM32 必须共地，PA0 输入电压不得超过 3.3 V。
+
+固件每 1 ms 采集一次 PA0，在 100 ms 窗口内计算 ADC 最大值与最小值之差，然后换算为 `0%` 到 `100%` 的相对音量。该数值用于观察声音变化，并不是经过声压计校准的 dB 值。
 
 如果蜂鸣器工作电流超过 STM32 GPIO 的驱动能力，应使用三极管或 MOSFET 驱动，不能将大功率蜂鸣器直接连接到 PA8。
 
@@ -79,8 +86,8 @@ TCP 服务器可以向 ESP-12F 发送以下 ASCII 文本。指令区分大小写
 
 | PC/服务器发送内容 | 执行动作 |
 |---|---|
-| `LED ON` | PB8 输出高电平，打开 LED |
-| `LED OFF` | PB8 输出低电平，关闭 LED |
+| `LED ON` | PB8 输出低电平，打开 LED |
+| `LED OFF` | PB8 输出高电平，关闭 LED |
 | `BUZZER ON` | PA8 输出高电平，打开蜂鸣器 |
 | `BUZZER OFF` | PA8 输出低电平，关闭蜂鸣器 |
 
@@ -131,32 +138,62 @@ USART1 会同时显示 ESP-12F 返回的数据，常见响应包括：
 
 固件正在自动连接时，不建议从 PC 同时发送 AT 指令，否则手动指令的响应可能影响自动连接状态机。
 
-## PowerShell TCP 测试
+## PowerShell TCP 服务器
 
-下面的示例在电脑上启动 TCP 服务器并等待 ESP-12F 连接：
+工程根目录提供了 [esp_server.ps1](esp_server.ps1)。脚本会监听 TCP 8080 端口、显示 STM32 上传的状态、发送 LED/蜂鸣器控制命令，并在 ESP 断线后继续等待重连。
 
-```powershell
-$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8080)
-$listener.Start()
-$client = $listener.AcceptTcpClient()
-$stream = $client.GetStream()
-```
-
-打开蜂鸣器：
+在 PowerShell 中运行：
 
 ```powershell
-$data = [Text.Encoding]::ASCII.GetBytes("BUZZER ON")
-$stream.Write($data, 0, $data.Length)
+cd C:\D\Stm32.projects\ESP_12f
+powershell -ExecutionPolicy Bypass -File .\esp_server.ps1
 ```
 
-关闭蜂鸣器：
+如果当前 PowerShell 已允许执行本地脚本，也可以直接运行：
 
 ```powershell
-$data = [Text.Encoding]::ASCII.GetBytes("BUZZER OFF")
-$stream.Write($data, 0, $data.Length)
+.\esp_server.ps1
 ```
 
-控制 LED 时，将发送内容替换为 `LED ON` 或 `LED OFF`。
+运行后可以输入以下命令：
+
+| 输入内容 | 作用 |
+|---|---|
+| `LED ON` | 打开 LED |
+| `LED OFF` | 关闭 LED |
+| `BUZZER ON` | 打开蜂鸣器 |
+| `BUZZER OFF` | 关闭蜂鸣器 |
+| `HELP` | 显示命令列表 |
+| `QUIT` | 停止服务器并释放端口 |
+
+ESP 连接后，服务器每秒会收到类似内容：
+
+```text
+RX: STATUS LED=ON BUZZER=OFF NOISE=27
+```
+
+字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `LED` | LED 当前开关状态 |
+| `BUZZER` | 蜂鸣器当前开关状态 |
+| `NOISE` | PA0 检测到的相对噪音百分比 |
+
+如果 8080 端口已被旧的 PowerShell 监听程序占用，请先关闭旧窗口，或者查找占用端口的进程：
+
+```powershell
+Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+    Select-Object LocalAddress, LocalPort, State, OwningProcess
+```
+
+脚本也可以监听其他端口：
+
+```powershell
+.\esp_server.ps1 -Port 8081
+```
+
+此时还需要将 `App/Inc/app_secrets.h` 中的 `APP_SERVER_PORT` 改为相同端口并重新编译、烧录。
 
 ## 编译工程
 
