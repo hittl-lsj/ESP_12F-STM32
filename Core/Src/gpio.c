@@ -54,10 +54,10 @@ void MX_GPIO_Init(void)
                           |OLED_MOSI_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
 
   /*Configure GPIO pins : OLED_CS_Pin OLED_DC_Pin OLED_RST_Pin OLED_SCK_Pin
                            OLED_MOSI_Pin */

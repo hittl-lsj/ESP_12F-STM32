@@ -50,20 +50,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static uint8_t noise_percent;
+static uint8_t smoke_percent;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void Sound_Init(void);
-static void Sound_Task(void);
+static void Smoke_Init(void);
+static void Smoke_Task(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void Sound_Init(void)
+static void Smoke_Init(void)
 {
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK)
   {
@@ -71,40 +71,35 @@ static void Sound_Init(void)
   }
 }
 
-static void Sound_Task(void)
+static void Smoke_Task(void)
 {
   static uint32_t sample_tick;
   static uint32_t window_tick;
-  static uint16_t sample_min = 4095U;
-  static uint16_t sample_max;
+  static uint32_t sample_sum;
   static uint16_t sample_count;
-  uint16_t sample;
   uint32_t now = HAL_GetTick();
 
-  if ((now - sample_tick) >= APP_SOUND_SAMPLE_INTERVAL_MS)
+  if ((now - sample_tick) >= APP_SMOKE_SAMPLE_INTERVAL_MS)
   {
     sample_tick = now;
     if ((HAL_ADC_Start(&hadc1) == HAL_OK) &&
         (HAL_ADC_PollForConversion(&hadc1, 2U) == HAL_OK))
     {
-      sample = (uint16_t)HAL_ADC_GetValue(&hadc1);
-      if (sample < sample_min) sample_min = sample;
-      if (sample > sample_max) sample_max = sample;
+      sample_sum += HAL_ADC_GetValue(&hadc1);
       sample_count++;
     }
     HAL_ADC_Stop(&hadc1);
   }
-
-  if ((now - window_tick) >= APP_SOUND_WINDOW_MS)
+  
+  if ((now - window_tick) >= APP_SMOKE_WINDOW_MS)
   {
     window_tick = now;
     if (sample_count > 0U)
     {
-      uint32_t peak_to_peak = (uint32_t)sample_max - sample_min;
-      noise_percent = (uint8_t)((peak_to_peak * 100U + 2047U) / 4095U);
+      uint32_t average = sample_sum / sample_count;
+      smoke_percent = (uint8_t)((average * 100U + 2047U) / 4095U);
     }
-    sample_min = 4095U;
-    sample_max = 0U;
+    sample_sum = 0U;
     sample_count = 0U;
   }
 }
@@ -147,7 +142,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   UART_Bridge_Init();// 初始化 UART 桥接
   OLED_Init();
-  Sound_Init();
+  Smoke_Init();// 初始化烟雾传感器
 
   /* USER CODE END 2 */
 
@@ -158,13 +153,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    UART_Bridge_Task();
-    Sound_Task();
-    ESP12F_SetStatus(
-        HAL_GPIO_ReadPin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN) == GPIO_PIN_RESET,
-        HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET,
-        noise_percent);
-    ESP12F_Task();
+    UART_Bridge_Task();// UART 桥接任务
+    Smoke_Task();// 烟雾传感器任务
+    ESP12F_SetStatus(// 设置 ESP12F 状态
+        HAL_GPIO_ReadPin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN) == GPIO_PIN_RESET,// LED 状态
+        HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET,// 喇鸣器状态
+        smoke_percent);// 烟雾百分比
+    ESP12F_Task();// ESP12F 任务
     {
       static uint32_t oled_update_tick;
       if ((HAL_GetTick() - oled_update_tick) >= 250U)
@@ -181,7 +176,7 @@ int main(void)
         snprintf(line, sizeof(line), "BEEP: %s", HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET ? "ON" : "OFF");
         OLED_WriteString(line, OLED_COLOR_WHITE);
         OLED_SetCursor(0U, 24U);
-        snprintf(line, sizeof(line), "NOISE: %3u%%", noise_percent);
+        snprintf(line, sizeof(line), "SMOKE: %3u%%", smoke_percent);
         OLED_WriteString(line, OLED_COLOR_WHITE);
         OLED_UpdateScreen();
       }

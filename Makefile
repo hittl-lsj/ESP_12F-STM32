@@ -39,6 +39,7 @@ C_SOURCES =  \
 Core/Src/main.c \
 App/Src/uart_bridge.c \
 App/Src/esp12f.c \
+App/Src/mqtt.c \
 App/Src/oled.c \
 App/Src/oled_font.c \
 App/Src/oled_chinese.c \

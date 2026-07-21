@@ -8,7 +8,7 @@
 该模块负责 USART1 和 USART2 的不定长双向透明透传。
 
 ```text
-电脑/VOFA+ -- USART1 -- STM32 -- USART2 -- ESP-12F
+电脑/串口工具 -- USART1 -- STM32 -- USART2 -- ESP-12F
 ```
 
 ## 公共接口
@@ -33,25 +33,23 @@ void UART_Bridge_Task(void);
 
 `HAL_UART_RxCpltCallback()` 由本模块统一实现：
 
-- USART1 收到字节：放入 USART1 -> USART2 缓冲区。
-- USART2 收到字节：放入 USART2 -> USART1 缓冲区，主循环转发时再交给
-  `ESP12F_OnRxByte()` 解析，避免在中断里执行字符串搜索。
+- USART1 收到字节：放入 USART1 -> USART2 缓冲区，主循环转发给 ESP-12F。
+- USART2 收到字节：放入 USART2 -> USART1 缓冲区，主循环转发给电脑串口，并交给 `ESP12F_OnRxByte()` 解析。
 - 每次收到一个字节后立即重新启动下一字节接收。
 
-因此 ESP 的返回内容既会被应用解析，也会原样显示在 VOFA+ 中。
+因此 ESP 的返回内容既会被应用解析，也会原样显示在电脑串口工具中。
 
 ## 错误恢复
 
-`HAL_UART_ErrorCallback()` 会重新启动对应串口的中断接收。它只负责恢复接收，不记录
-具体错误类型。
+`HAL_UART_ErrorCallback()` 会重新启动对应串口的中断接收。它只负责恢复接收，不记录具体错误类型。
 
 ## 缓冲区满
 
-环形缓冲区满时丢弃新字节，并增加内部 `overflow_count`。当前没有公开读取该计数的
-接口；调试时可通过 Watch 窗口查看模块内变量。
+环形缓冲区满时丢弃新字节，并增加内部 `overflow_count`。当前没有公开读取该计数的接口；调试时可通过 Watch 窗口查看模块内变量。
 
 ## 限制
 
 - 发送端目前使用逐字节阻塞式 `HAL_UART_Transmit()`。
+- 来自 ESP-12F 的 MQTT/AT 数据只有在主循环消费 USART2 缓冲区后才会被解析，主循环不能被长时间阻塞。
 - HAL 的 UART 完成和错误回调由本模块占用，其他模块不能重复定义同名回调。
 - 更高吞吐量场景建议升级为 DMA + 空闲线接收和中断/DMA 发送队列。
