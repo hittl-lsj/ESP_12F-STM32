@@ -1,33 +1,10 @@
-# App 应用层
+# App Layer
 
-`App` 保存独立于 STM32CubeMX 外设初始化代码的应用逻辑。CubeMX 生成的外设初始化仍位于 `Core`，业务状态机、串口桥接、MQTT 编解码和 OLED 驱动位于 `App`。
+The `App` directory contains application logic that is kept outside the STM32CubeMX-generated peripheral initialization code. CubeMX-generated code remains under `Core`, while connection logic, MQTT packet handling, UART bridging, OLED drawing, and application configuration live under `App`.
 
-## 模块关系
+## Main Loop Integration
 
-```text
-main.c
-  |-- UART_Bridge_Init()
-  |-- OLED_Init()
-  |-- Smoke_Init()
-  `-- while (1)
-      |-- UART_Bridge_Task()
-      |-- Smoke_Task()
-      |-- ESP12F_SetStatus()
-      |-- ESP12F_Task()
-      `-- OLED_UpdateScreen()
-
-USART1 <-> uart_bridge <-> USART2 <-> ESP-12F
-                         |
-                         `-> ESP12F_OnRxByte()
-                               |-- AT 响应解析
-                               |-- +IPD 长度解析
-                               |-- MQTT 报文解析
-                               `-- LED/BUZZER 命令执行
-```
-
-## 主循环职责
-
-外设初始化完成后调用一次：
+`Core/Src/main.c` initializes the application modules:
 
 ```c
 UART_Bridge_Init();
@@ -35,20 +12,59 @@ OLED_Init();
 Smoke_Init();
 ```
 
-主循环持续调用：
+The main loop continuously executes:
 
 ```c
 UART_Bridge_Task();
 Smoke_Task();
 ESP12F_SetStatus(led_on, buzzer_on, smoke_percent);
 ESP12F_Task();
+OLED_UpdateScreen();
 ```
 
-`UART_Bridge_Task()` 从串口环形缓冲区取数据并转发；来自 ESP-12F 的字节会在主循环中交给 `ESP12F_OnRxByte()` 解析。`ESP12F_Task()` 负责 Wi-Fi、TCP、MQTT 连接和周期状态上报。主循环中不应加入长时间 `HAL_Delay()`，否则会增加串口缓冲区溢出和 MQTT 超时风险。
+## Module Responsibilities
 
-## 文档
+```text
+main.c
+  |-- Smoke_Init()
+  |-- Smoke_Task()
+  |-- UART_Bridge_Init()
+  |-- UART_Bridge_Task()
+  |-- ESP12F_SetStatus()
+  |-- ESP12F_Task()
+  `-- OLED_UpdateScreen()
 
-- [配置模块](README_app_config.md)
-- [串口桥接模块](README_uart_bridge.md)
-- [ESP-12F 模块](README_esp12f.md)
-- [MQTT 通信](README_mqtt.md)
+USART1 <-> uart_bridge <-> USART2 <-> ESP-12F
+                         |
+                         `-> ESP12F_OnRxByte()
+                               |-- AT response parsing
+                               |-- +IPD payload parsing
+                               |-- MQTT packet parsing
+                               `-- cloud downlink hook
+```
+
+## Smoke Data Path
+
+The smoke sensor analog output is connected to PA0 / ADC1_IN0. `Smoke_Task()` samples the ADC every `APP_SMOKE_SAMPLE_INTERVAL_MS`, averages values over `APP_SMOKE_WINDOW_MS`, and converts the ADC average to a 0-100 percentage.
+
+That percentage is passed to `ESP12F_SetStatus()`. When the ESP/MQTT state machine is ready, `ESP12F_Task()` publishes it as the Gewu `smokeConcentration` property.
+
+## Current Cloud Payload
+
+The firmware publishes:
+
+```json
+{"messageId":"123","params":{"key":"smokeConcentration","value":27}}
+```
+
+to:
+
+```text
+$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/pub
+```
+
+## Notes
+
+- The main loop should stay non-blocking. Long `HAL_Delay()` calls will increase UART buffer overflow and MQTT timeout risk.
+- USART1 remains useful for watching ESP AT logs.
+- Cloud downlink topic subscription is present, but JSON command handling for Gewu `property/set` still needs implementation.

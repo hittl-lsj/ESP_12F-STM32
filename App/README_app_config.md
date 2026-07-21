@@ -1,84 +1,82 @@
-# app_config 配置模块
+# Application Configuration
 
-文件：
+Application configuration is split into two files:
 
-- `App/Inc/app_config.h`
-- `App/Inc/app_secrets.h`（本地配置，不提交到 Git）
-- `App/Inc/app_secrets.example.h`（配置模板）
+- `App/Inc/app_config.h`: tracked defaults for pins, timing, buffers, and fallback MQTT values.
+- `App/Inc/app_secrets.h`: local Wi-Fi and cloud credentials, ignored by Git.
 
-该模块集中保存应用层参数，避免网络地址、GPIO、MQTT 主题和缓冲区大小散落在业务代码中。
-
-## 网络和 MQTT 配置
-
-首次克隆仓库后，把 `app_secrets.example.h` 复制为 `app_secrets.h`，再填写本地网络参数：
+Create the local secret file from the template:
 
 ```powershell
 Copy-Item App/Inc/app_secrets.example.h App/Inc/app_secrets.h
 ```
 
-```c
-#define APP_WIFI_SSID          "YOUR_WIFI_SSID"
-#define APP_WIFI_PASSWORD      "YOUR_WIFI_PASSWORD"
-#define APP_SERVER_IP          "192.168.1.100"
-#define APP_SERVER_PORT        "1883"
-
-#define APP_MQTT_CLIENT_ID     "stm32-esp12f"
-#define APP_MQTT_USERNAME      ""
-#define APP_MQTT_PASSWORD      ""
-#define APP_MQTT_STATUS_TOPIC  "stm32/esp12f/status"
-#define APP_MQTT_COMMAND_TOPIC "stm32/esp12f/command"
-```
-
-`APP_SERVER_IP` 应填写 MQTT Broker 在局域网中的 IPv4 地址。电脑重新连接热点后 IPv4 地址可能变化，可运行 `ipconfig` 查看 WLAN IPv4，并同步修改后重新编译和烧录。
-
-如果没有在 `app_secrets.h` 中定义 MQTT 客户端、账号、密码或主题，`app_config.h` 会提供默认值。多个设备连接同一个 Broker 时，必须使用不同的 `APP_MQTT_CLIENT_ID`。
-
-## GPIO 配置
+## Hardware Macros
 
 ```c
-#define APP_LED_GPIO_PORT    GPIOB
-#define APP_LED_GPIO_PIN     GPIO_PIN_8
+#define APP_LED_GPIO_PORT     GPIOB
+#define APP_LED_GPIO_PIN      GPIO_PIN_8
 
-#define APP_BUZZER_GPIO_PORT GPIOA
-#define APP_BUZZER_GPIO_PIN  GPIO_PIN_8
+#define APP_BUZZER_GPIO_PORT  GPIOA
+#define APP_BUZZER_GPIO_PIN   GPIO_PIN_8
 ```
 
-当前控制逻辑：
+PB8 is treated as an active-low LED. PA8 is treated as an active-high buzzer output.
 
-- `LED ON`：PB8 输出低电平。
-- `LED OFF`：PB8 输出高电平。
-- `BUZZER ON`：PA8 输出高电平。
-- `BUZZER OFF`：PA8 输出低电平。
-
-更换引脚时必须同时修改 `app_config.h` 和 STM32CubeMX GPIO 配置。
-
-## 周期参数
+## Smoke Sampling
 
 ```c
 #define APP_SMOKE_SAMPLE_INTERVAL_MS  1U
 #define APP_SMOKE_WINDOW_MS           100U
-#define APP_STATUS_UPLOAD_INTERVAL_MS 1000U
-#define APP_MQTT_KEEP_ALIVE_SECONDS   30U
 ```
 
-烟雾传感器任务每 1 ms 采样一次 PA0，在 100 ms 窗口内计算 ADC 平均值并换算为相对烟雾百分比。状态上报每 1000 ms 发布一次 MQTT QoS 0 JSON。保活间隔配置为 30 秒，固件会在无收发活动时发送 MQTT PINGREQ。
+The firmware samples PA0 every 1 ms and averages the ADC readings over a 100 ms window. The result is converted to a relative smoke percentage from 0 to 100.
 
-## 缓冲区配置
+## Upload and Keepalive Timing
 
 ```c
-#define APP_UART_BRIDGE_BUFFER_SIZE   256U
-#define APP_ESP_RESPONSE_BUFFER_SIZE  96U
-#define APP_MQTT_PACKET_BUFFER_SIZE   192U
-#define APP_MQTT_RX_BUFFER_SIZE       192U
+#define APP_STATUS_UPLOAD_INTERVAL_MS 100U
+#define APP_MQTT_KEEP_ALIVE_SECONDS  30U
 ```
 
-- 串口桥接缓冲区分别用于 USART1 -> USART2 和 USART2 -> USART1。
-- ESP 响应缓冲区用于识别 AT 响应、`>` 发送提示、`SEND OK` 和断线提示。
-- MQTT 发送缓冲区保存 CONNECT、SUBSCRIBE、PUBLISH、PINGREQ 报文。
-- MQTT 接收缓冲区保存 `+IPD` 载荷中的 MQTT 报文。
+The current property upload interval is 100 ms. For normal cloud use, 1000 ms or 5000 ms is often more practical.
 
-增大缓冲区会增加 SRAM 占用；减小缓冲区前需要确认 MQTT 客户端 ID、主题和状态 JSON 的最大长度仍能放入。
+The MQTT keepalive is 30 seconds. If there is no MQTT activity for about half the keepalive interval, the firmware sends a PINGREQ.
 
-## 安全说明
+## Buffer Sizes
 
-Wi-Fi 密码和 MQTT 账号密码会以明文编译进固件，适合实验学习，不适合直接用于正式产品。`app_secrets.h` 已被 `.gitignore` 排除，避免意外提交本地凭据。
+```c
+#define APP_UART_BRIDGE_BUFFER_SIZE 256U
+#define APP_ESP_RESPONSE_BUFFER_SIZE 96U
+#define APP_MQTT_PACKET_BUFFER_SIZE  192U
+#define APP_MQTT_RX_BUFFER_SIZE      192U
+```
+
+The current Gewu CONNECT packet and property upload payload fit within the 192-byte MQTT packet buffer. Increase these sizes if longer topics, larger JSON payloads, or more subscribed topics are added.
+
+## Gewu Credentials
+
+`app_secrets.h` stores:
+
+- Wi-Fi SSID and password.
+- MQTT broker host and port.
+- MQTT client ID.
+- MQTT username.
+- MQTT HMAC-SHA256 password.
+- Property publish and downlink topics.
+
+The tracked template uses placeholders:
+
+```c
+#define APP_WIFI_SSID       "YOUR_WIFI_SSID"
+#define APP_WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
+
+#define APP_SERVER_IP       "dmp-mqtt.cuiot.cn"
+#define APP_SERVER_PORT     "1883"
+
+#define APP_MQTT_CLIENT_ID  "DEVICE_ID|PRODUCT_KEY|0|0|0"
+#define APP_MQTT_USERNAME   "DEVICE_KEY|PRODUCT_KEY"
+#define APP_MQTT_PASSWORD   "HMAC_SHA256_PASSWORD"
+```
+
+Never commit the real `app_secrets.h`.

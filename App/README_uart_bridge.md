@@ -1,55 +1,67 @@
-# uart_bridge 串口桥接模块
+# UART Bridge
 
-文件：
+Files:
 
 - `App/Inc/uart_bridge.h`
 - `App/Src/uart_bridge.c`
 
-该模块负责 USART1 和 USART2 的不定长双向透明透传。
+The UART bridge connects the PC debug serial port and ESP-12F serial port:
 
 ```text
-电脑/串口工具 -- USART1 -- STM32 -- USART2 -- ESP-12F
+PC USB-TTL <-> USART1 <-> STM32 <-> USART2 <-> ESP-12F
 ```
 
-## 公共接口
+## UART Roles
 
-### UART_Bridge_Init
+| UART | Purpose |
+| --- | --- |
+| USART1 | PC debug serial port |
+| USART2 | ESP-12F AT command serial port |
+
+Both UARTs are configured for 115200 baud, 8 data bits, no parity, 1 stop bit.
+
+## Receive Path
+
+`UART_Bridge_Init()` starts interrupt-based one-byte receives for USART1 and USART2.
+
+Received bytes are pushed into ring buffers:
+
+```text
+USART1 RX -> uart1_to_uart2 buffer
+USART2 RX -> uart2_to_uart1 buffer
+```
+
+`UART_Bridge_Task()` forwards queued bytes:
+
+```text
+uart1_to_uart2 -> USART2
+uart2_to_uart1 -> USART1
+```
+
+When bytes from ESP-12F are forwarded to USART1, the bridge also passes them to:
 
 ```c
-void UART_Bridge_Init(void);
+ESP12F_OnRxByte(data);
 ```
 
-启动 USART1 和 USART2 的单字节中断接收。必须在两个串口完成初始化后调用一次。
+This lets the state machine parse ESP AT responses and MQTT `+IPD` packets while still showing logs on the PC serial terminal.
 
-### UART_Bridge_Task
+## Debug Use
 
-```c
-void UART_Bridge_Task(void);
+USART1 is useful for watching:
+
+```text
+AT
+OK
+WIFI CONNECTED
+WIFI GOT IP
+CONNECT
+SEND OK
++IPD,...
 ```
 
-从两个环形缓冲区取出数据并转发，应在主循环中持续调用。
+Manual AT commands can be sent from the PC through USART1, but doing this while the automatic state machine is running can confuse response parsing. For normal operation, treat USART1 mainly as a log output.
 
-## 接收流程
+## Buffering
 
-`HAL_UART_RxCpltCallback()` 由本模块统一实现：
-
-- USART1 收到字节：放入 USART1 -> USART2 缓冲区，主循环转发给 ESP-12F。
-- USART2 收到字节：放入 USART2 -> USART1 缓冲区，主循环转发给电脑串口，并交给 `ESP12F_OnRxByte()` 解析。
-- 每次收到一个字节后立即重新启动下一字节接收。
-
-因此 ESP 的返回内容既会被应用解析，也会原样显示在电脑串口工具中。
-
-## 错误恢复
-
-`HAL_UART_ErrorCallback()` 会重新启动对应串口的中断接收。它只负责恢复接收，不记录具体错误类型。
-
-## 缓冲区满
-
-环形缓冲区满时丢弃新字节，并增加内部 `overflow_count`。当前没有公开读取该计数的接口；调试时可通过 Watch 窗口查看模块内变量。
-
-## 限制
-
-- 发送端目前使用逐字节阻塞式 `HAL_UART_Transmit()`。
-- 来自 ESP-12F 的 MQTT/AT 数据只有在主循环消费 USART2 缓冲区后才会被解析，主循环不能被长时间阻塞。
-- HAL 的 UART 完成和错误回调由本模块占用，其他模块不能重复定义同名回调。
-- 更高吞吐量场景建议升级为 DMA + 空闲线接收和中断/DMA 发送队列。
+The bridge uses `APP_UART_BRIDGE_BUFFER_SIZE`, currently 256 bytes. If logs are very bursty or the main loop is blocked for too long, overflow can occur.

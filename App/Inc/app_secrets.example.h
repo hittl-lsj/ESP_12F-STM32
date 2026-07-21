@@ -3,13 +3,13 @@
 
 #define APP_WIFI_SSID       "YOUR_WIFI_SSID"
 #define APP_WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
-#define APP_SERVER_IP       "192.168.1.100"
+#define APP_SERVER_IP       "dmp-mqtt.cuiot.cn"
 #define APP_SERVER_PORT     "1883"
 
-#define APP_MQTT_CLIENT_ID     "stm32-esp12f"
-#define APP_MQTT_USERNAME      ""
-#define APP_MQTT_PASSWORD      ""
-#define APP_MQTT_STATUS_TOPIC  "stm32/esp12f/status"
-#define APP_MQTT_COMMAND_TOPIC "stm32/esp12f/command"
+#define APP_MQTT_CLIENT_ID     "DEVICE_ID|PRODUCT_KEY|0|0|0"
+#define APP_MQTT_USERNAME      "DEVICE_KEY|PRODUCT_KEY"
+#define APP_MQTT_PASSWORD      "HMAC_SHA256_PASSWORD"
+#define APP_MQTT_STATUS_TOPIC  "$sys/PRODUCT_KEY/DEVICE_KEY/property/pub"
+#define APP_MQTT_COMMAND_TOPIC "$sys/PRODUCT_KEY/DEVICE_KEY/property/set"
 
 #endif

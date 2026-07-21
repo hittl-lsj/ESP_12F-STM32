@@ -361,11 +361,10 @@ void ESP12F_Task(void)
       if (response_closed) ESP12F_ScheduleRetry();
       else if ((HAL_GetTick() - status_upload_tick) >= APP_STATUS_UPLOAD_INTERVAL_MS)
       {
-        char payload[64];
+        char payload[96];
         int length = snprintf(payload, sizeof(payload),
-                              "{\"led\":\"%s\",\"buzzer\":\"%s\",\"smoke\":%u}",
-                              status_led_on ? "ON" : "OFF",
-                              status_buzzer_on ? "ON" : "OFF",
+                              "{\"messageId\":\"%lu\",\"params\":{\"key\":\"smokeConcentration\",\"value\":%u}}",
+                              (unsigned long)HAL_GetTick(),
                               (unsigned int)status_smoke_percent);
         uint16_t packet_length = (length > 0) ?
           MQTT_EncodePublish(tx_packet, sizeof(tx_packet), APP_MQTT_STATUS_TOPIC,
