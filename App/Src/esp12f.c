@@ -55,6 +55,13 @@ typedef enum
   IPD_PAYLOAD   /* 正在把 MQTT 二进制载荷逐字节交给 MQTT 解析器。 */
 } ESP_IpdState;
 
+typedef enum
+{
+  ESP_PROPERTY_ABSENT,
+  ESP_PROPERTY_PRESENT,
+  ESP_PROPERTY_INVALID
+} ESP_PropertyStatus;
+
 /* AT 文本响应滑动窗口。
  * 缓冲区只保存最近一小段文本，足够匹配 OK/ERROR/CONNECT/SEND OK 等关键字。
  */
@@ -77,6 +84,7 @@ static uint8_t status_led_on;                /* 保留状态：当前 LED 是否
 static uint8_t status_buzzer_on;             /* 保留状态：当前蜂鸣器是否打开。 */
 static uint8_t status_smoke_percent;         /* 下一次上报的烟雾百分比。 */
 static uint8_t smoke_alarm_limit = APP_SMOKE_ALARM_LIMIT_DEFAULT;
+static uint8_t buzzer_manual_override;
 static uint8_t tx_packet[APP_MQTT_PACKET_BUFFER_SIZE];
 static uint16_t tx_packet_length;
 static uint8_t set_reply_pending;
@@ -279,6 +287,27 @@ static uint8_t ESP12F_ParseJsonUint(const char *json, const char *field,
   return 1U;
 }
 
+static ESP_PropertyStatus ESP12F_ParsePropertyUint(const char *json, const char *property_key,
+                                                   uint32_t *value)
+{
+  char token[24];
+  const char *property;
+
+  snprintf(token, sizeof(token), "\"%s\"", property_key);
+  property = strstr(json, token);
+  if (property == NULL)
+  {
+    return ESP_PROPERTY_ABSENT;
+  }
+
+  if (ESP12F_ParseJsonUint(property, "value", value) == 0U)
+  {
+    return ESP_PROPERTY_INVALID;
+  }
+
+  return ESP_PROPERTY_PRESENT;
+}
+
 static void ESP12F_QueueSetReply(const char *message_id, const char *code,
                                  const char *message)
 {
@@ -309,6 +338,13 @@ static uint8_t ESP12F_SendPendingSetReply(void)
 
 static void ESP12F_UpdateAlarmOutput(void)
 {
+  if (buzzer_manual_override != 0U)
+  {
+    HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN,
+                      status_buzzer_on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    return;
+  }
+
   if (status_smoke_percent >= smoke_alarm_limit)
   {
     HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN, GPIO_PIN_SET);
@@ -321,12 +357,52 @@ static void ESP12F_UpdateAlarmOutput(void)
   }
 }
 
+static uint8_t ESP12F_ApplyOperationCode(uint32_t operation_code)
+{
+  switch (operation_code)
+  {
+    case 1UL:
+      HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_RESET);
+      status_led_on = 1U;
+      break;
+
+    case 2UL:
+      HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_SET);
+      status_led_on = 0U;
+      break;
+
+    case 3UL:
+      buzzer_manual_override = 1U;
+      status_buzzer_on = 1U;
+      HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN, GPIO_PIN_SET);
+      break;
+
+    case 4UL:
+      buzzer_manual_override = 1U;
+      status_buzzer_on = 0U;
+      HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN, GPIO_PIN_RESET);
+      break;
+
+    case 5UL:
+      buzzer_manual_override = 0U;
+      ESP12F_UpdateAlarmOutput();
+      break;
+
+    default:
+      return 0U;
+  }
+
+  return 1U;
+}
+
 static void ESP12F_ApplyPropertySetJson(const uint8_t *payload, uint16_t length)
 {
   static char json[APP_MQTT_RX_BUFFER_SIZE + 1U];
   char message_id[12] = "0";
-  const char *limit_property;
   uint32_t limit_value;
+  uint32_t operation_code;
+  ESP_PropertyStatus limit_status;
+  ESP_PropertyStatus operation_status;
 
   if (length >= sizeof(json))
   {
@@ -338,22 +414,38 @@ static void ESP12F_ApplyPropertySetJson(const uint8_t *payload, uint16_t length)
   json[length] = '\0';
   (void)ESP12F_CopyJsonValue(json, "messageId", message_id, sizeof(message_id));
 
-  limit_property = strstr(json, "\"dbmLimit\"");
-  if (limit_property == NULL)
+  limit_status = ESP12F_ParsePropertyUint(json, "dbmLimit", &limit_value);
+  operation_status = ESP12F_ParsePropertyUint(json, "operationCode", &operation_code);
+
+  if ((limit_status == ESP_PROPERTY_ABSENT) &&
+      (operation_status == ESP_PROPERTY_ABSENT))
   {
     ESP12F_QueueSetReply(message_id, "100001", "unsupported key");
     return;
   }
 
-  if ((ESP12F_ParseJsonUint(limit_property, "value", &limit_value) == 0U) ||
-      (limit_value > 100UL))
+  if ((limit_status == ESP_PROPERTY_INVALID) ||
+      (operation_status == ESP_PROPERTY_INVALID) ||
+      ((limit_status == ESP_PROPERTY_PRESENT) && (limit_value > 100UL)) ||
+      ((operation_status == ESP_PROPERTY_PRESENT) &&
+       ((operation_code < 1UL) || (operation_code > 5UL))))
   {
     ESP12F_QueueSetReply(message_id, "100001", "invalid value");
     return;
   }
 
-  smoke_alarm_limit = (uint8_t)limit_value;
-  ESP12F_UpdateAlarmOutput();
+  if (limit_status == ESP_PROPERTY_PRESENT)
+  {
+    smoke_alarm_limit = (uint8_t)limit_value;
+    buzzer_manual_override = 0U;
+    ESP12F_UpdateAlarmOutput();
+  }
+
+  if (operation_status == ESP_PROPERTY_PRESENT)
+  {
+    (void)ESP12F_ApplyOperationCode(operation_code);
+  }
+
   ESP12F_QueueSetReply(message_id, "000000", "");
 }
 
@@ -365,17 +457,23 @@ static void ESP12F_ApplyCommand(const uint8_t *payload, uint16_t length)
   if ((length == 6U) && (memcmp(payload, "LED ON", 6U) == 0))
   {
     HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_RESET);
+    status_led_on = 1U;
   }
   else if ((length == 7U) && (memcmp(payload, "LED OFF", 7U) == 0))
   {
     HAL_GPIO_WritePin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN, GPIO_PIN_SET);
+    status_led_on = 0U;
   }
   else if ((length == 9U) && (memcmp(payload, "BUZZER ON", 9U) == 0))
   {
+    buzzer_manual_override = 1U;
+    status_buzzer_on = 1U;
     HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN, GPIO_PIN_SET);
   }
   else if ((length == 10U) && (memcmp(payload, "BUZZER OFF", 10U) == 0))
   {
+    buzzer_manual_override = 1U;
+    status_buzzer_on = 0U;
     HAL_GPIO_WritePin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN, GPIO_PIN_RESET);
   }
   else

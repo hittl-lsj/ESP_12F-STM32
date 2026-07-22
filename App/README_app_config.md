@@ -28,7 +28,7 @@ PB8 作为低电平有效 LED。PA8 作为高电平有效蜂鸣器输出。
 ```c
 #define APP_SMOKE_SAMPLE_INTERVAL_MS  1U
 #define APP_SMOKE_WINDOW_MS           100U
-#define APP_SMOKE_ALARM_LIMIT_DEFAULT 60U
+#define APP_SMOKE_ALARM_LIMIT_DEFAULT 30U
 ```
 
 固件每 1 ms 采样一次 PA0，并在 100 ms 窗口内对 ADC 读数求平均值。结果会转换为 0-100 的相对烟雾百分比。

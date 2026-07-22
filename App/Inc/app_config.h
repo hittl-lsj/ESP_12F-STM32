@@ -19,7 +19,7 @@
  */
 #define APP_SMOKE_SAMPLE_INTERVAL_MS  1U
 #define APP_SMOKE_WINDOW_MS           100U
-#define APP_SMOKE_ALARM_LIMIT_DEFAULT 60U  /* 默认报警阈值，单位：相对烟雾百分比。 */
+#define APP_SMOKE_ALARM_LIMIT_DEFAULT 30U  /* 默认报警阈值，单位：相对烟雾百分比。 */
 
 /* 云端状态上传周期。
  * 100 ms 适合调试实时性；正式接入云平台时通常建议改为 1000U 或 5000U，

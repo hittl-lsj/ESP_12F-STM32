@@ -80,7 +80,9 @@ $sys/{productKey}/{deviceKey}/property/set
 $sys/{productKey}/{deviceKey}/property/set
 ```
 
-固件在 MQTT CONNECT 后会订阅该 Topic。当前已支持解析 `dbmLimit` 属性设置：
+固件在 MQTT CONNECT 后会订阅该 Topic。当前已支持解析 `dbmLimit` 阈值设置和 `operationCode` 设备操作码。
+
+`dbmLimit` 下发示例：
 
 ```json
 {
@@ -96,6 +98,32 @@ $sys/{productKey}/{deviceKey}/property/set
 ```
 
 收到合法的 `dbmLimit` 后，固件会把它保存为本地烟雾报警阈值。`smokeConcentration >= dbmLimit` 时 PA8 蜂鸣器打开，低于阈值时关闭。
+
+`operationCode` 下发示例：
+
+```json
+{
+  "messageId": "124",
+  "params": [
+    {
+      "key": "operationCode",
+      "value": 1
+    }
+  ]
+}
+```
+
+当前操作码约定：
+
+| value | 动作 |
+| --- | --- |
+| 1 | LED 开 |
+| 2 | LED 关 |
+| 3 | 蜂鸣器手动开 |
+| 4 | 蜂鸣器手动关 |
+| 5 | 恢复自动阈值控制 |
+
+`operationCode=3` 或 `4` 后，蜂鸣器进入手动优先状态；再次设置 `dbmLimit` 或下发 `operationCode=5` 会恢复按烟雾阈值自动控制。
 
 回复 Topic：
 

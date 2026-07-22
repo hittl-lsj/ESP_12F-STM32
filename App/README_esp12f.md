@@ -89,10 +89,20 @@ BUZZER ON
 BUZZER OFF
 ```
 
-格物 `property/set` JSON 解析已支持 `dbmLimit`。收到平台下发后，固件会更新烟雾报警阈值，并向以下 Topic 回复：
+格物 `property/set` JSON 解析已支持 `dbmLimit` 和 `operationCode`。收到平台下发后，固件会更新烟雾报警阈值或执行设备操作，并向以下 Topic 回复：
 
 ```text
 $sys/{productKey}/{deviceKey}/property/set_reply
+```
+
+`operationCode` 当前约定：
+
+```text
+1 = LED 开
+2 = LED 关
+3 = 蜂鸣器手动开
+4 = 蜂鸣器手动关
+5 = 恢复自动阈值控制
 ```
 
 ## 保活

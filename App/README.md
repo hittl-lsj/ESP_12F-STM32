@@ -67,5 +67,6 @@ $sys/{productKey}/{deviceKey}/property/pub
 
 - 主循环应保持非阻塞。较长的 `HAL_Delay()` 会增加 UART 缓冲区溢出和 MQTT 超时风险。
 - USART1 仍然适合用于查看 ESP AT 日志。
-- 云端下行 Topic 已订阅，当前支持格物 `property/set` 中的 `dbmLimit` 阈值设置，并会发布 `property/set_reply`。
+- 云端下行 Topic 已订阅，当前支持格物 `property/set` 中的 `dbmLimit` 阈值设置和 `operationCode` 设备操作码，并会发布 `property/set_reply`。
 - 当烟雾百分比大于或等于 `dbmLimit` 时，PA8 蜂鸣器打开；低于阈值时关闭。
+- `operationCode` 当前约定：`1` LED 开，`2` LED 关，`3` 蜂鸣器手动开，`4` 蜂鸣器手动关，`5` 恢复自动阈值控制。
