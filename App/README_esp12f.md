@@ -57,7 +57,7 @@ boot delay
 发布 Topic：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/pub
+$sys/{productKey}/{deviceKey}/property/pub
 ```
 
 ## MQTT 接收
@@ -77,7 +77,7 @@ ESP AT 固件按以下格式传递 TCP 数据：
 当前下行订阅 Topic：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/set
+$sys/{productKey}/{deviceKey}/property/set
 ```
 
 已有命令执行器仍识别旧的纯文本测试命令：
@@ -89,7 +89,11 @@ BUZZER ON
 BUZZER OFF
 ```
 
-格物 `property/set` JSON 解析尚未实现。
+格物 `property/set` JSON 解析已支持 `dbmLimit`。收到平台下发后，固件会更新烟雾报警阈值，并向以下 Topic 回复：
+
+```text
+$sys/{productKey}/{deviceKey}/property/set_reply
+```
 
 ## 保活
 

@@ -60,11 +60,12 @@ USART1 <-> uart_bridge <-> USART2 <-> ESP-12F
 到：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/pub
+$sys/{productKey}/{deviceKey}/property/pub
 ```
 
 ## 注意事项
 
 - 主循环应保持非阻塞。较长的 `HAL_Delay()` 会增加 UART 缓冲区溢出和 MQTT 超时风险。
 - USART1 仍然适合用于查看 ESP AT 日志。
-- 云端下行 Topic 已订阅，但格物 `property/set` 的 JSON 命令处理仍待实现。
+- 云端下行 Topic 已订阅，当前支持格物 `property/set` 中的 `dbmLimit` 阈值设置，并会发布 `property/set_reply`。
+- 当烟雾百分比大于或等于 `dbmLimit` 时，PA8 蜂鸣器打开；低于阈值时关闭。

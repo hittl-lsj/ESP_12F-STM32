@@ -52,7 +52,7 @@ $sys/{productKey}/{deviceKey}/property/pub
 当前设备 Topic：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/pub
+$sys/{productKey}/{deviceKey}/property/pub
 ```
 
 上报载荷遵循格物属性格式：
@@ -133,7 +133,8 @@ MQTT PUBLISH property/pub
 - MQTT 客户端不会直接与 PC 或手机通信。设备和用户客户端都连接到云端 Broker。
 - 格物 Topic 中的 `$sys` 前缀是必需的。
 - `smokeConcentration` 是产品模型属性标识，应放在载荷中，而不是 Topic 中。
-- 固件当前已订阅 `property/set`，但尚未实现云端下行 JSON 解析。
+- 固件已订阅 `property/set`，当前支持解析 `dbmLimit` 阈值设置。收到后会更新本地烟雾报警阈值，并向 `property/set_reply` 返回执行结果。
+- 当 `smokeConcentration` 大于或等于 `dbmLimit` 时，固件会打开 PA8 蜂鸣器；低于阈值时关闭蜂鸣器。
 
 ## 模块文档
 

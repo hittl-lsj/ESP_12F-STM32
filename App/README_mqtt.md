@@ -41,7 +41,7 @@ $sys/{productKey}/{deviceKey}/property/pub
 当前设备 Topic：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/pub
+$sys/{productKey}/{deviceKey}/property/pub
 ```
 
 格物要求的载荷格式：
@@ -77,10 +77,45 @@ $sys/{productKey}/{deviceKey}/property/set
 当前设备 Topic：
 
 ```text
-$sys/cu1e1vp51svlk8zn/X00PdoZ4luWgnux/property/set
+$sys/{productKey}/{deviceKey}/property/set
 ```
 
-固件在 MQTT CONNECT 后会订阅该 Topic。当前解析器尚未解码格物 JSON 下行载荷，仍只处理本地 MQTT 测试阶段使用的旧纯文本命令。
+固件在 MQTT CONNECT 后会订阅该 Topic。当前已支持解析 `dbmLimit` 属性设置：
+
+```json
+{
+  "messageId": "123",
+  "params": [
+    {
+      "key": "dbmLimit",
+      "value": 60,
+      "ts": "1528292272000"
+    }
+  ]
+}
+```
+
+收到合法的 `dbmLimit` 后，固件会把它保存为本地烟雾报警阈值。`smokeConcentration >= dbmLimit` 时 PA8 蜂鸣器打开，低于阈值时关闭。
+
+回复 Topic：
+
+```text
+$sys/{productKey}/{deviceKey}/property/set_reply
+```
+
+回复 Topic 示例：
+
+```text
+$sys/{productKey}/{deviceKey}/property/set_reply
+```
+
+成功回复格式：
+
+```json
+{"code":"000000","message":"","messageId":"123","data":[]}
+```
+
+如果 key 不支持、value 无效或 payload 过长，固件会返回错误 code 和简短 message。
 
 ## 批量属性上报
 
