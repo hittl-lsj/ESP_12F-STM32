@@ -1,0 +1,46 @@
+/* IAR EWARM linker configuration file for STM32F103C8Tx.
+ *
+ * Memory layout matches STM32F103xx_FLASH.ld:
+ *   FLASH: 0x08000000 - 0x0800FFFF, 64 KB
+ *   RAM:   0x20000000 - 0x20004FFF, 20 KB
+ *
+ * Heap and stack sizes match ESP_12f.ioc / GCC linker script:
+ *   Heap:  0x200 bytes
+ *   Stack: 0x400 bytes
+ */
+
+define symbol __ICFEDIT_intvec_start__ = 0x08000000;
+
+define symbol __ICFEDIT_region_ROM_start__ = 0x08000000;
+define symbol __ICFEDIT_region_ROM_end__   = 0x0800FFFF;
+define symbol __ICFEDIT_region_RAM_start__ = 0x20000000;
+define symbol __ICFEDIT_region_RAM_end__   = 0x20004FFF;
+
+define symbol __ICFEDIT_size_cstack__ = 0x400;
+define symbol __ICFEDIT_size_heap__   = 0x200;
+
+define memory mem with size = 4G;
+
+define region ROM_region = mem:[from __ICFEDIT_region_ROM_start__ to __ICFEDIT_region_ROM_end__];
+define region RAM_region = mem:[from __ICFEDIT_region_RAM_start__ to __ICFEDIT_region_RAM_end__];
+
+define block CSTACK with alignment = 8, size = __ICFEDIT_size_cstack__ { };
+define block HEAP   with alignment = 8, size = __ICFEDIT_size_heap__   { };
+
+/* IAR C runtime copies initialized read-write data from Flash to RAM.
+ * Sections marked .noinit are kept untouched across reset.
+ */
+initialize by copy { readwrite };
+do not initialize  { section .noinit };
+
+/* IAR startup files usually name the vector table .intvec.
+ * The .isr_vector entry is kept for easier reuse if a converted GCC startup
+ * file keeps the original CubeMX/GCC section name.
+ */
+place at address mem:__ICFEDIT_intvec_start__ {
+  readonly section .intvec,
+  readonly section .isr_vector
+};
+
+place in ROM_region { readonly };
+place in RAM_region { readwrite, block CSTACK, block HEAP };

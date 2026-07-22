@@ -50,6 +50,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+/* 烟雾浓度百分比。
+ * Smoke_Task() 会周期性更新该值；主循环把它传给 ESP12F_SetStatus()，
+ * OLED 刷新时也直接显示该值。
+ */
 static uint8_t smoke_percent;
 
 /* USER CODE END PV */
@@ -63,6 +67,9 @@ static void Smoke_Task(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* ADC 校准。
+ * STM32F1 ADC 在正式采样前建议执行一次校准，减少零点和增益误差。
+ */
 static void Smoke_Init(void)
 {
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK)
@@ -71,6 +78,16 @@ static void Smoke_Init(void)
   }
 }
 
+/* 烟雾传感器采样任务。
+ *
+ * 该函数采用非阻塞方式运行：
+ * - 每 APP_SMOKE_SAMPLE_INTERVAL_MS 启动一次 ADC 转换；
+ * - 在 APP_SMOKE_WINDOW_MS 时间窗口内累加采样值；
+ * - 窗口结束后计算平均 ADC 值，并换算为 0-100 的相对百分比。
+ *
+ * PA0 / ADC1_IN0 的 ADC 满量程为 4095。公式中的 +2047 用于四舍五入：
+ *   percent = round(average * 100 / 4095)
+ */
 static void Smoke_Task(void)
 {
   static uint32_t sample_tick;
@@ -82,6 +99,8 @@ static void Smoke_Task(void)
   if ((now - sample_tick) >= APP_SMOKE_SAMPLE_INTERVAL_MS)
   {
     sample_tick = now;
+
+    /* 单次转换超时时间设置为 2 ms，避免 ADC 异常时长时间卡住主循环。 */
     if ((HAL_ADC_Start(&hadc1) == HAL_OK) &&
         (HAL_ADC_PollForConversion(&hadc1, 2U) == HAL_OK))
     {
@@ -90,7 +109,7 @@ static void Smoke_Task(void)
     }
     HAL_ADC_Stop(&hadc1);
   }
-  
+
   if ((now - window_tick) >= APP_SMOKE_WINDOW_MS)
   {
     window_tick = now;
@@ -140,9 +159,12 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  UART_Bridge_Init();// 初始化 UART 桥接
+  /* 初始化手写应用模块。
+   * UART 桥接先启动接收中断，便于尽早看到 ESP-12F 的启动日志。
+   */
+  UART_Bridge_Init();
   OLED_Init();
-  Smoke_Init();// 初始化烟雾传感器
+  Smoke_Init();
 
   /* USER CODE END 2 */
 
@@ -153,15 +175,25 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    UART_Bridge_Task();// UART 桥接任务
-    Smoke_Task();// 烟雾传感器任务
-    ESP12F_SetStatus(// 设置 ESP12F 状态
-        HAL_GPIO_ReadPin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN) == GPIO_PIN_RESET,// LED 状态
-        HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET,// 喇鸣器状态
-        smoke_percent);// 烟雾百分比
-    ESP12F_Task();// ESP12F 任务
+    /* 主循环保持短小、快速、非阻塞：
+     * UART_Bridge_Task() 搬运串口字节；
+     * Smoke_Task() 做定时 ADC 采样；
+     * ESP12F_Task() 推进 Wi-Fi/TCP/MQTT 状态机。
+     */
+    UART_Bridge_Task();
+    Smoke_Task();
+
+    /* LED 为低电平有效，蜂鸣器为高电平有效，因此这里把 GPIO 电平转换为逻辑状态。 */
+    ESP12F_SetStatus(
+        HAL_GPIO_ReadPin(APP_LED_GPIO_PORT, APP_LED_GPIO_PIN) == GPIO_PIN_RESET,
+        HAL_GPIO_ReadPin(APP_BUZZER_GPIO_PORT, APP_BUZZER_GPIO_PIN) == GPIO_PIN_SET,
+        smoke_percent);
+    ESP12F_Task();
+
     {
       static uint32_t oled_update_tick;
+
+      /* OLED 刷新频率低于主循环频率，避免频繁整屏 SPI 写入影响串口和 MQTT 时序。 */
       if ((HAL_GetTick() - oled_update_tick) >= 250U)
       {
         char line[24];
