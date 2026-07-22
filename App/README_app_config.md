@@ -1,17 +1,17 @@
-# Application Configuration
+# 应用配置
 
-Application configuration is split into two files:
+应用配置分为两个文件：
 
-- `App/Inc/app_config.h`: tracked defaults for pins, timing, buffers, and fallback MQTT values.
-- `App/Inc/app_secrets.h`: local Wi-Fi and cloud credentials, ignored by Git.
+- `App/Inc/app_config.h`：纳入版本管理的默认配置，包括引脚、时序、缓冲区和兜底 MQTT 值。
+- `App/Inc/app_secrets.h`：本地 Wi-Fi 和云端凭据，已被 Git 忽略。
 
-Create the local secret file from the template:
+从模板创建本地密钥文件：
 
 ```powershell
 Copy-Item App/Inc/app_secrets.example.h App/Inc/app_secrets.h
 ```
 
-## Hardware Macros
+## 硬件宏
 
 ```c
 #define APP_LED_GPIO_PORT     GPIOB
@@ -21,29 +21,29 @@ Copy-Item App/Inc/app_secrets.example.h App/Inc/app_secrets.h
 #define APP_BUZZER_GPIO_PIN   GPIO_PIN_8
 ```
 
-PB8 is treated as an active-low LED. PA8 is treated as an active-high buzzer output.
+PB8 作为低电平有效 LED。PA8 作为高电平有效蜂鸣器输出。
 
-## Smoke Sampling
+## 烟雾采样
 
 ```c
 #define APP_SMOKE_SAMPLE_INTERVAL_MS  1U
 #define APP_SMOKE_WINDOW_MS           100U
 ```
 
-The firmware samples PA0 every 1 ms and averages the ADC readings over a 100 ms window. The result is converted to a relative smoke percentage from 0 to 100.
+固件每 1 ms 采样一次 PA0，并在 100 ms 窗口内对 ADC 读数求平均值。结果会转换为 0-100 的相对烟雾百分比。
 
-## Upload and Keepalive Timing
+## 上传与保活时序
 
 ```c
 #define APP_STATUS_UPLOAD_INTERVAL_MS 100U
 #define APP_MQTT_KEEP_ALIVE_SECONDS  30U
 ```
 
-The current property upload interval is 100 ms. For normal cloud use, 1000 ms or 5000 ms is often more practical.
+当前属性上传间隔为 100 ms。正常云端使用时，1000 ms 或 5000 ms 通常更实用。
 
-The MQTT keepalive is 30 seconds. If there is no MQTT activity for about half the keepalive interval, the firmware sends a PINGREQ.
+MQTT keepalive 为 30 秒。如果约半个 keepalive 周期内没有 MQTT 活动，固件会发送 PINGREQ。
 
-## Buffer Sizes
+## 缓冲区大小
 
 ```c
 #define APP_UART_BRIDGE_BUFFER_SIZE 256U
@@ -52,20 +52,20 @@ The MQTT keepalive is 30 seconds. If there is no MQTT activity for about half th
 #define APP_MQTT_RX_BUFFER_SIZE      192U
 ```
 
-The current Gewu CONNECT packet and property upload payload fit within the 192-byte MQTT packet buffer. Increase these sizes if longer topics, larger JSON payloads, or more subscribed topics are added.
+当前格物 CONNECT 报文和属性上报载荷可以放入 192 字节 MQTT 报文缓冲区。如果后续增加更长 Topic、更大 JSON 载荷或更多订阅 Topic，需要增大这些缓冲区。
 
-## Gewu Credentials
+## 格物凭据
 
-`app_secrets.h` stores:
+`app_secrets.h` 保存：
 
-- Wi-Fi SSID and password.
-- MQTT broker host and port.
-- MQTT client ID.
-- MQTT username.
-- MQTT HMAC-SHA256 password.
-- Property publish and downlink topics.
+- Wi-Fi SSID 和密码。
+- MQTT Broker 地址和端口。
+- MQTT 客户端 ID。
+- MQTT 用户名。
+- MQTT HMAC-SHA256 密码。
+- 属性上报和下行 Topic。
 
-The tracked template uses placeholders:
+纳入版本管理的模板使用占位值：
 
 ```c
 #define APP_WIFI_SSID       "YOUR_WIFI_SSID"
@@ -79,4 +79,4 @@ The tracked template uses placeholders:
 #define APP_MQTT_PASSWORD   "HMAC_SHA256_PASSWORD"
 ```
 
-Never commit the real `app_secrets.h`.
+不要提交真实的 `app_secrets.h`。
